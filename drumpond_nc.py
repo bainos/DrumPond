@@ -1,6 +1,50 @@
 import sys,os
 import curses
 
+from curses import window
+
+class MainWindow():
+    def __init__(self, stdscr: window) -> None:
+        self.stdscr = stdscr
+        self.is_startup: bool = True
+        self.command_mode: bool = False
+        self.command_input: str = ""
+        self.h, self.w = stdscr.getmaxyx()
+        self.tab_title: str = "DrumPondNC v0.0"
+        self.whstr: str = "W{}xH{}".format(self.w, self.h)
+        self._init_colors()
+
+
+    def _init_colors(self):
+        curses.start_color()
+        curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        self.cyan_black   = curses.color_pair(1)
+        self.red_black    = curses.color_pair(2)
+        self.black_white  = curses.color_pair(3)
+        self.yellow_black = curses.color_pair(4)
+
+
+    def _rigth(self, string: str = "") -> int:
+        return self.w - len(string) - 1
+
+
+    def _header(self) -> (int, int):
+        self.stdscr.addstr(
+            0, 0,
+            self.tab_title, self.red_black
+        )
+        self.stdscr.addstr(
+            0, self._rigth(self.whstr),
+            self.whstr, self.cyan_black
+        )
+        return (1, self.w - 1)
+
+    def render(self) -> None:
+        header_h, header_w = self._header()
+
 
 def draw_menu(stdscr):
     k = 0
@@ -14,12 +58,14 @@ def draw_menu(stdscr):
     stdscr.clear()
     stdscr.refresh()
 
-    # Start colors in curses
-    curses.start_color()
-    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
-    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
-    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
-    curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+    mw = MainWindow(stdscr)
+
+#    # Start colors in curses
+#    curses.start_color()
+#    curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
+#    curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
+#    curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
+#    curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
 
     # Loop where k is the last character pressed
     while (k != ord('!')):
@@ -69,15 +115,16 @@ def draw_menu(stdscr):
 
         # Declaration of strings
         posstr = "{},{}".format(cursor_x,cursor_y)
-        statusstr = "'!' to exit"
+        statusstr = "{}".format(type(stdscr))
         statusbarstr = statusstr + " "*(width-len(statusstr)-len(posstr)-1)
         statusbarstr = statusbarstr + posstr
 
         # Rendering header bar
-        tab_title = "DrumPondNC v0.0"
-        whstr = "W{}xH{}".format(width, height)
-        stdscr.addstr(0, 0, tab_title, curses.color_pair(2))
-        stdscr.addstr(0, width-len(whstr)-1, whstr, curses.color_pair(1))
+        mw.render()
+#        tab_title = "DrumPondNC v0.0"
+#        whstr = "W{}xH{}".format(width, height)
+#        stdscr.addstr(0, 0, tab_title, curses.color_pair(2))
+#        stdscr.addstr(0, width-len(whstr)-1, whstr, curses.color_pair(1))
 
         # Render status bar
         stdscr.attron(curses.color_pair(3))
