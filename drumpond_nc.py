@@ -1,14 +1,14 @@
 import sys,os
 import curses
 
+
 def draw_menu(stdscr):
     k = 0
     cursor_x = 0
     cursor_y = 0
 
     command_mode = False
-    command = ""
-    statusbarstr = "Press 'q' to exit | {} | Pos: {}, {}".format(command, cursor_x, cursor_y)
+    command_input = ""
 
     # Clear and refresh the screen for a blank canvas
     stdscr.clear()
@@ -19,6 +19,7 @@ def draw_menu(stdscr):
     curses.init_pair(1, curses.COLOR_CYAN, curses.COLOR_BLACK)
     curses.init_pair(2, curses.COLOR_RED, curses.COLOR_BLACK)
     curses.init_pair(3, curses.COLOR_BLACK, curses.COLOR_WHITE)
+    curses.init_pair(4, curses.COLOR_YELLOW, curses.COLOR_BLACK)
 
     # Loop where k is the last character pressed
     while (k != ord('!')):
@@ -29,13 +30,13 @@ def draw_menu(stdscr):
 
         if command_mode:
             if k == 10:
-                if command == ":q":
+                if command_input == ":q":
                     break
                 cursor_x = old_cursor_x
                 cursor_y = old_cursor_y
                 command_mode = False
             else:
-                command = command+chr(k)
+                command_input = command_input+chr(k)
                 cursor_x = cursor_x+1
         else:
             if k == curses.KEY_DOWN:
@@ -51,7 +52,7 @@ def draw_menu(stdscr):
                 n = stdscr.getch()
                 if n == -1:
                     command_mode = True
-                    command = ""
+                    command_input = ""
                     statusbarstr = ""
                     old_cursor_x = cursor_x
                     old_cursor_y = cursor_y
@@ -67,47 +68,89 @@ def draw_menu(stdscr):
         cursor_y = min(height-1, cursor_y)
 
         # Declaration of strings
-        title = "Curses example"[:width-1]
-        subtitle = "Written by Clay McLeod"[:width-1]
-        keystr = "Last key pressed: {} {}".format(k,chr(k))[:width-1]
-        if command_mode:
-            statusbarstr = command
-        else:
-            statusbarstr = "Press 'q' to exit | {} | Pos: {}, {}".format(command, cursor_x, cursor_y)
-        if k == 0:
-            keystr = "No key press detected..."[:width-1]
+        posstr = "{},{}".format(cursor_x,cursor_y)
+        statusstr = "'!' to exit"
+        statusbarstr = statusstr + " "*(width-len(statusstr)-len(posstr)-1)
+        statusbarstr = statusbarstr + posstr
 
-        # Centering calculations
-        start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
-        start_x_subtitle = int((width // 2) - (len(subtitle) // 2) - len(subtitle) % 2)
-        start_x_keystr = int((width // 2) - (len(keystr) // 2) - len(keystr) % 2)
-        start_y = int((height // 2) - 2)
-
-        # Rendering some text
-        whstr = "Width: {}, Height: {}".format(width, height)
-        stdscr.addstr(0, 0, whstr, curses.color_pair(1))
+        # Rendering header bar
+        tab_title = "DrumPondNC v0.0"
+        whstr = "W{}xH{}".format(width, height)
+        stdscr.addstr(0, 0, tab_title, curses.color_pair(2))
+        stdscr.addstr(0, width-len(whstr)-1, whstr, curses.color_pair(1))
 
         # Render status bar
         stdscr.attron(curses.color_pair(3))
-        stdscr.addstr(height-1, 0, statusbarstr)
-        stdscr.addstr(height-1, len(statusbarstr), " " * (width - len(statusbarstr) - 1))
+        stdscr.addstr(height-2, 0, statusbarstr)
         stdscr.attroff(curses.color_pair(3))
 
-        # Turning on attributes for title
-        stdscr.attron(curses.color_pair(2))
-        stdscr.attron(curses.A_BOLD)
+        # Render command line
+        stdscr.addstr(height-1, 0, command_input)
+        stdscr.addstr(height-1, width-len(str(k))-1, str(k), curses.color_pair(4))
 
-        # Rendering title
-        stdscr.addstr(start_y, start_x_title, title)
+        # Render drumtab bar
+        pitches = ["ride", "sn", "bd", "chp"]
+        time = "4/4"
+        measures, division = time.split('/')
+        measures = int(measures)
+        division = int(division)
+        subdivision = 16
+        notesstr_len = (subdivision // division)*measures
+        sep = '|'
+        note = '-'
+        pitchesstr_len_max = 0
+        for p in pitches:
+            if len(p) > pitchesstr_len_max:
+                pitchesstr_len_max = len(p)
 
-        # Turning off attributes for title
-        stdscr.attroff(curses.color_pair(2))
-        stdscr.attroff(curses.A_BOLD)
+        drumtab_row_len = pitchesstr_len_max + len(sep) + notesstr_len + len(sep)
+        start_x_drumtab_row = int((width // 2) - (drumtab_row_len // 2) - drumtab_row_len % 2)
+        start_y_drumtab_row = int(
+            (height // 2)
+            - (len(pitches) // 2)
+            - 4 # header + statusbar + command line + drumtab footer
+        )
+        for p in pitches:
+            pitches_col = " "*(pitchesstr_len_max-len(p)) + p + sep
+            notes_col = note*notesstr_len + sep
+            drumtab_row = pitches_col + notes_col
+            stdscr.addstr(
+                start_y_drumtab_row,
+                start_x_drumtab_row,
+                drumtab_row,
+            )
+            start_y_drumtab_row = start_y_drumtab_row + 1
+            
+        drumtab_footer = " "*(pitchesstr_len_max) + sep
+        j = 1
+        for i in range(subdivision):
+            if not (i % 4):
+                drumtab_footer = drumtab_footer + str(j)
+                j = j + 1
+            else:
+                drumtab_footer = drumtab_footer + note
+        drumtab_footer = drumtab_footer + sep
+        stdscr.addstr(
+            start_y_drumtab_row,
+            start_x_drumtab_row,
+            drumtab_footer,
+        )
+        
+#        # Print wellcome message
+#        if k == 0:
+#            # Centering calculations
+#            title = "Press '!' to exit"[:width-1]
+#            start_x_title = int((width // 2) - (len(title) // 2) - len(title) % 2)
+#            start_y = int((height // 2) - 2)
+#
+#            # Turning on attributes for title
+#            stdscr.attron(curses.color_pair(2))
+#            stdscr.attron(curses.A_BOLD)
+#            stdscr.addstr(start_y, start_x_title, title)
+#            stdscr.attroff(curses.color_pair(2))
+#            stdscr.attroff(curses.A_BOLD)
 
-        # Print rest of text
-        stdscr.addstr(start_y + 1, start_x_subtitle, subtitle)
-        stdscr.addstr(start_y + 3, (width // 2) - 2, '-' * 4)
-        stdscr.addstr(start_y + 5, start_x_keystr, keystr)
+        # Set cursor position
         stdscr.move(cursor_y, cursor_x)
 
         # Refresh the screen
