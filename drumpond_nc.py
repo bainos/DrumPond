@@ -154,24 +154,83 @@ class InputMode(Enum):
     PLAYBACK = 5
 
 
+class Component():
+
+    __events__ = (
+        "mode_change",
+        "esc_keypress",
+        "enter_keypress",
+        "arrows_keypress",
+        "keypress",
+    )
+
+    def __init__(self, stdscr: window) -> None:
+        self._stdscr = stdscr
+        self._screen_h, self._screen_w = stdscr.getmaxyx()
+        self._mode: int = InputMode.WAIT
+        self._mode_prev: int = InputMode.WAIT
+        self._events = {event: dict() for event in self.__events__}
+
+    @property
+    def events(self) -> dict:
+        return self._events
+
+    @property
+    def screen_size(self) -> (int, int):
+        return self._screen_h-1, self._screen_w-1
+
+    @screen_size.setter
+    def screen_size(self, h: int, w: int) -> None:
+        self._screen_h = h
+        self._screen_w = w
+
+    @property
+    def mode(self) -> int:
+        return self._mode
+
+    @mode.setter
+    def mode(self, mode: int) -> None:
+        self._mode_prev = self._mode
+        self._mode = mode
+
+
+class Raw(Component):
+
+    def __init__(self, stdscr: window) -> None:
+        super().__init__(self, stdscr)
+        self._length = self.screen_size[1]
+        self._content = " " * self._length
+
+    @property
+    def content(self) -> str:
+        return self._content
+
+    @content.setter
+    def content(self, content: str = "", right_content: str = "") -> None
+        c_len = len(content)
+        rc_len = len(right_content)
+        blank_space = " " * (self._length - c_len - rc_len)
+        self._content = content + (" " * blank_space) + right_content
+        self._stdscr.noutrefresh()
+
 class KInput():
+
     def __init__(
         self,
         stdscr: window,
-        cursor: Cursor,
-        main_window: MainWindow,
     ) -> None:
         self._stdscr = stdscr
-        self._cursor = cursor
-        self._mw = main_window
-        self._k: int = 0
-        self._quit: bool = False
-        self._command: str = ""
-        self._command_history: list[str] = []
-        self._mode: int = InputMode.WAIT
-        self._prev_mode: int = InputMode.WAIT
-        self._cursor.coordinates = (0, 0)
-        curses.nonl()
+
+    def get_subscribers(self, event):
+        return self.events[event]
+
+    def register(self, event, who, callback=None):
+        if callback is None:
+            callback = getattr(who, 'update')
+        self.get_subscribers(event)[who] = callback
+
+    def unregister(self, event, who):
+        del self.get_subscribers(event)[who]
 
     def _mode_switch(self, mode: InputMode) -> None:
         self._prev_mode = self._mode
@@ -342,6 +401,7 @@ def draw_drumtab(stdscr):
 
 
 def draw_menu(stdscr):
+    curses.nonl()
     cur = Cursor(stdscr=stdscr)
     mw = MainWindow(stdscr=stdscr)
     ki = KInput(
