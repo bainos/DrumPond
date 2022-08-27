@@ -22,12 +22,14 @@ class Events(Enum):
     K_ARROWS = auto()
     K_ENTER = auto()
     K_ESC = auto()
+    K_PRESS = auto()
     MODE_CHANGE = auto()
     WAIT = auto()
     COMMAND = auto()
     INSERT = auto()
     VISUAL = auto()
     PLAYBACK = auto()
+    COMMAND_SEND = auto()
 
 
 class Component():
@@ -140,6 +142,15 @@ class KInput(Component):
 
     def listen(self) -> bool:
         self._k = self._stdscr.getch()
+        # 0-9
+        if self._k >= 48 and self._k <= 57:
+            self.dispatch(Events.K_PRESS, self._k)
+        # A-Z
+        if self._k >= 65 and self._k <= 90:
+            self.dispatch(Events.K_PRESS, self._k)
+        # a-z
+        if self._k >= 97 and self._k <= 122:
+            self.dispatch(Events.K_PRESS, self._k)
         if self._actions[self._k] is not None:
             self.dispatch(self._actions[self._k][0],
                           self._actions[self._k][1])
@@ -200,6 +211,7 @@ class StatusBar(Row):
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.MODE_CHANGE.value] = self._on_mode_change
         self._events_action[Events.COMMAND.value] = self._on_command
+        self._events_action[Events.COMMAND_SEND.value] = self._on_command_send
         self._events_action[Events.INSERT.value] = self._on_insert
         self._events_action[Events.VISUAL.value] = self._on_visual
         self._events_action[Events.PLAYBACK.value] = self._on_playback
@@ -232,6 +244,9 @@ class StatusBar(Row):
     def _on_command(self, dummy) -> None:
         self._on_mode_change(InputMode.COMMAND)
 
+    def _on_command_send(self, commamd) -> None:
+        self.info = commamd
+
     def _on_insert(self, dummy) -> None:
         self._on_mode_change(InputMode.INSERT)
 
@@ -254,24 +269,41 @@ class CommandLine(Row):
 
     def __init__(self, stdscr: window) -> None:
         super().__init__("command_line", stdscr)
-        self._events_action[Events.COMMAND] = self._on_command
-        self._events_action[Events.K_ENTER] = self._on_enter_keypress
-        self._events_action[Events.K_ESC] = self._on_esc_keypress
-        self._command: str = ""
+        self._events_action[Events.COMMAND.value] = self._on_command
+        self._events_action[Events.K_ENTER.value] = self._on_enter_keypress
+        self._events_action[Events.K_ESC.value] = self._on_esc_keypress
+        self._events_action[Events.K_PRESS.value] = self._on_keypress
+        self._command: str = ":"
         self._history: list = list()
-        self._commands = dict()
+        self._commands: dict = dict()
+        self._active: bool = False
         for element in inspect.getmembers(
                 Commands, predicate=inspect.ismethod):
             self._commands[element[0]] = element[1]
 
     def _on_command(self, arg) -> None:
-        pass
+        self._active = True
+        self.set_content(self._screen_h-1, 0, self._command)
+        self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
+
+    def _on_keypress(self, arg) -> None:
+        if not self._active:
+            return
+        self._command = self._command + chr(arg)
+        self.set_content(self._screen_h-1, 0, self._command)
+        self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
 
     def _on_enter_keypress(self, arg) -> None:
-        pass
+        self._history.append(self._command)
+        self.dispatch(Events.COMMAND_SEND, self._command)
+        self._command = ":"
+        self._active = False
+        self.dispatch(Events.K_ESC, None)
 
     def _on_esc_keypress(self, arg) -> None:
-        pass
+        self._command = ":"
+        self._active = False
+        self.dispatch(Events.K_ESC, None)
 
 
 class MainWindow(Component):
@@ -290,14 +322,18 @@ class MainWindow(Component):
 class Cursor(Component):
     def __init__(self, stdscr: window) -> None:
         super().__init__("cursor", stdscr)
-        self._y: int = 0
+        self._y: int = 1
         self._x: int = 0
         self._history: list[(int, int)] = [(0, 0)]
+        self._commandline: bool = False
         self._stdscr = stdscr
         self._events_action[Events.K_LEFT.value] = self._left
         self._events_action[Events.K_UP.value] = self._up
         self._events_action[Events.K_RIGHT.value] = self._right
         self._events_action[Events.K_DOWN.value] = self._down
+        self._events_action[Events.COMMAND.value] = self._command_line_on
+        self._events_action[Events.K_ESC.value] = self._command_line_off
+        self._events_action[Events.K_ENTER.value] = self._command_line_off
 
     @property
     def coordinates(self) -> (int, int):
@@ -306,11 +342,10 @@ class Cursor(Component):
     @coordinates.setter
     def coordinates(self, yx: (int, int) = (0, 0)) -> None:
         y, x = yx
-        h, v = self._stdscr.getmaxyx()
-        self._y = max(0, y)
-        self._y = min(h-1, y)
-        self._x = max(0, x)
-        self._x = min(h-1, x)
+        if y <= self._screen_h and y >= 1:
+            self._y = y
+        if x <= self._screen_w and x >= 0:
+            self._x = x
         self.dispatch(Events.CURSOR_MOVE, (self._y, self._x))
 
     def _left(self, dummy) -> None:
@@ -335,12 +370,19 @@ class Cursor(Component):
     def restore(self) -> (int, int):
         self.coordinates = self._history.pop()
 
-    def _action_command_line_on(self) -> None:
-        self.save()
-        self.coordinates = (self._screen_h, 0)
+    def _handle_cli(self) -> None:
+        pass
 
-    def _action_command_line_off(self) -> None:
-        self.restore()
+    def _command_line_on(self, args) -> None:
+        if self._commandline is not True:
+            self._commandline = True
+            self.save()
+            self.coordinates = (self._screen_h-1, 0)
+
+    def _command_line_off(self, args) -> None:
+        if self._commandline is True:
+            self._commandline = False
+            self.restore()
 
 
 def draw_menu(stdscr):
@@ -355,28 +397,38 @@ def draw_menu(stdscr):
     cursor = Cursor(stdscr)
 
     header.title = "DrumpondNC"
+
     kinput.register(Events.K_ARROWS, cursor)
+    cli.register(Events.K_ARROWS, cursor)
+
     cursor.register(Events.CURSOR_MOVE, statusbar)
 
     kinput.register(Events.K_ESC, statusbar)
-    kinput.register(Events.K_ESC, cli)
     kinput.register(Events.K_ESC, cursor)
+    kinput.register(Events.K_ESC, cli)
+    cli.register(Events.K_ESC, statusbar)
+    cli.register(Events.K_ESC, cursor)
 
     kinput.register(Events.MODE_CHANGE, statusbar)
     kinput.register(Events.MODE_CHANGE, cli)
     kinput.register(Events.MODE_CHANGE, cursor)
 
+    kinput.register(Events.K_PRESS, cli)
+
+    kinput.register(Events.K_ENTER, cli)
+
     cursor.coordinates = (1, 0)
     stdscr.refresh()
     counter = 0
     stop = False
+    cursor.move()
     while not stop:
 
         if counter > 10:
             stop = True
 
-        cursor.move()
         kinput.listen()
+        cursor.move()
         counter = counter + 1
         # stdscr.clear()
         # stdscr.refresh()
