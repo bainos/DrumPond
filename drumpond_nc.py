@@ -146,10 +146,12 @@ class KInput(Component):
         if self._k >= 48 and self._k <= 57:
             self.dispatch(Events.K_PRESS, self._k)
         # A-Z
-        if self._k >= 65 and self._k <= 90:
+        elif self._k >= 65 and self._k <= 90:
             self.dispatch(Events.K_PRESS, self._k)
         # a-z
-        if self._k >= 97 and self._k <= 122:
+        elif self._k >= 97 and self._k <= 122:
+            self.dispatch(Events.K_PRESS, self._k)
+        else:
             self.dispatch(Events.K_PRESS, self._k)
         if self._actions[self._k] is not None:
             self.dispatch(self._actions[self._k][0],
@@ -224,7 +226,7 @@ class StatusBar(Row):
     def info(self, info: str = "") -> None:
         self.set_content(self._h, 0, info, self._content_r)
 
-    def _on_cursor_move(self, yx: (int, int) = (0, 0)) -> None:
+    def _on_cursor_move(self, yx: (int, int)) -> None:
         y, x = yx
         self.set_content(self._h, 0,
                          self._content_l,
@@ -273,6 +275,7 @@ class CommandLine(Row):
         self._events_action[Events.K_ENTER.value] = self._on_enter_keypress
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.K_PRESS.value] = self._on_keypress
+        self._y, self._x = (self._screen_h-1, 1)
         self._command: str = ":"
         self._history: list = list()
         self._commands: dict = dict()
@@ -287,11 +290,15 @@ class CommandLine(Row):
         self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
 
     def _on_keypress(self, arg) -> None:
-        if not self._active:
-            return
-        self._command = self._command + chr(arg)
-        self.set_content(self._screen_h-1, 0, self._command)
-        self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
+        if arg > 32 and arg < 126 and self._active:
+            self._command = self._command + chr(arg)
+            self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
+            self._x = self._x + 1
+        elif arg == curses.KEY_LEFT and self._x > 0:
+            self._x = self._x - 1
+        elif arg == curses.KEY_RIGHT and self._x < len(self._command):
+            self._x = self._x + 1
+        self.set_content(self._screen_h-1, 0, self._command, str(self._x))
 
     def _on_enter_keypress(self, arg) -> None:
         self._history.append(self._command)
@@ -352,13 +359,15 @@ class Cursor(Component):
         self.coordinates = (self._y, self._x - 1)
 
     def _up(self, dummy) -> None:
-        self.coordinates = (self._y - 1, self._x)
+        if self._commandline is False:
+            self.coordinates = (self._y - 1, self._x)
 
     def _right(self, dummy) -> None:
         self.coordinates = (self._y, self._x + 1)
 
     def _down(self, dummy) -> None:
-        self.coordinates = (self._y + 1, self._x)
+        if self._commandline is False:
+            self.coordinates = (self._y + 1, self._x)
 
     def move(self) -> None:
         self._stdscr.move(self._y, self._x)
@@ -374,7 +383,7 @@ class Cursor(Component):
         pass
 
     def _command_line_on(self, args) -> None:
-        if self._commandline is not True:
+        if self._commandline is False:
             self._commandline = True
             self.save()
             self.coordinates = (self._screen_h-1, 0)
@@ -403,14 +412,14 @@ def draw_menu(stdscr):
 
     cursor.register(Events.CURSOR_MOVE, statusbar)
 
+    kinput.register(Events.K_ESC, cli)
     kinput.register(Events.K_ESC, statusbar)
     kinput.register(Events.K_ESC, cursor)
-    kinput.register(Events.K_ESC, cli)
     cli.register(Events.K_ESC, statusbar)
     cli.register(Events.K_ESC, cursor)
 
-    kinput.register(Events.MODE_CHANGE, statusbar)
     kinput.register(Events.MODE_CHANGE, cli)
+    kinput.register(Events.MODE_CHANGE, statusbar)
     kinput.register(Events.MODE_CHANGE, cursor)
 
     kinput.register(Events.K_PRESS, cli)
