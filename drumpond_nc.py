@@ -43,6 +43,7 @@ class Component():
         self._mode_actions = [lambda *args: False] * len(InputMode)
         self._events = {event: list() for event in Events}
         self._events_action = [lambda *args: False] * len(Events)
+        self._command: str = ""
         self._init_actions()
 
     def _init_actions(self) -> None:
@@ -276,7 +277,6 @@ class CommandLine(Row):
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.K_PRESS.value] = self._on_keypress
         self._y, self._x = (self._screen_h-1, 1)
-        self._command: str = ":"
         self._history: list = list()
         self._commands: dict = dict()
         self._active: bool = False
@@ -284,14 +284,21 @@ class CommandLine(Row):
                 Commands, predicate=inspect.ismethod):
             self._commands[element[0]] = element[1]
 
+    def update_command(self, c: chr) -> None:
+        to_list = list(self._command)
+        to_list.insert(self._x, c)
+        self._command = "".join(to_list)
+
     def _on_command(self, arg) -> None:
         self._active = True
+        self._command = ":"
         self.set_content(self._screen_h-1, 0, self._command)
         self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
 
     def _on_keypress(self, arg) -> None:
         if arg > 32 and arg < 126 and self._active:
-            self._command = self._command + chr(arg)
+            # self._command = self._command + chr(arg)
+            self.update_command(chr(arg))
             self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
             self._x = self._x + 1
         elif arg == curses.KEY_LEFT and self._x > 0:
@@ -303,14 +310,13 @@ class CommandLine(Row):
     def _on_enter_keypress(self, arg) -> None:
         self._history.append(self._command)
         self.dispatch(Events.COMMAND_SEND, self._command)
-        self._command = ":"
         self._active = False
         self.dispatch(Events.K_ESC, None)
 
     def _on_esc_keypress(self, arg) -> None:
-        self._command = ":"
         self._active = False
         self.dispatch(Events.K_ESC, None)
+        self.set_content(self._screen_h-1, 0, self._command, str(self._x))
 
 
 class MainWindow(Component):
@@ -418,9 +424,9 @@ def draw_menu(stdscr):
     cli.register(Events.K_ESC, statusbar)
     cli.register(Events.K_ESC, cursor)
 
+    kinput.register(Events.MODE_CHANGE, cursor)
     kinput.register(Events.MODE_CHANGE, cli)
     kinput.register(Events.MODE_CHANGE, statusbar)
-    kinput.register(Events.MODE_CHANGE, cursor)
 
     kinput.register(Events.K_PRESS, cli)
 
