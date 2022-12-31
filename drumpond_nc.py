@@ -262,8 +262,14 @@ class StatusBar(Row):
 
 class Commands():
 
+    def __init__(self):
+        self.commands = {}
+        for element in inspect.getmembers(
+                self, predicate=inspect.ismethod):
+            self.commands[element[0]] = element[1]
+
     def quit(self):
-        pass
+        raise SystemExit
 
     q = quit
 
@@ -278,15 +284,17 @@ class CommandLine(Row):
         self._events_action[Events.K_PRESS.value] = self._on_keypress
         self._y, self._x = (self._screen_h-1, 1)
         self._history: list = list()
-        self._commands: dict = dict()
+        self._commands: dict = Commands().commands
         self._active: bool = False
-        for element in inspect.getmembers(
-                Commands, predicate=inspect.ismethod):
-            self._commands[element[0]] = element[1]
 
-    def update_command(self, c: chr) -> None:
+    def update_command(self, c: int) -> None:
         to_list = list(self._command)
-        to_list.insert(self._x, c)
+        to_list.insert(self._x, chr(c))
+        self._command = "".join(to_list)
+
+    def handle_backspace(self) -> None:
+        to_list = list(self._command)
+        to_list.pop(self._x-1)
         self._command = "".join(to_list)
 
     def _on_command(self, arg) -> None:
@@ -297,20 +305,27 @@ class CommandLine(Row):
 
     def _on_keypress(self, arg) -> None:
         if arg > 32 and arg < 126 and self._active:
-            # self._command = self._command + chr(arg)
-            self.update_command(chr(arg))
+            self.update_command(arg)
             self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
             self._x = self._x + 1
-        elif arg == curses.KEY_LEFT and self._x > 0:
+        elif arg == curses.KEY_LEFT and self._x > 1:
             self._x = self._x - 1
         elif arg == curses.KEY_RIGHT and self._x < len(self._command):
             self._x = self._x + 1
-        self.set_content(self._screen_h-1, 0, self._command, str(self._x))
+        elif arg == 127 and self._x > 1:
+            self.handle_backspace()
+            self.dispatch(Events.K_LEFT, curses.KEY_LEFT)
+            self._x = self._x - 1
+        self.set_content(self._screen_h-1, 0, self._command, str(arg))
 
     def _on_enter_keypress(self, arg) -> None:
         self._history.append(self._command)
         self.dispatch(Events.COMMAND_SEND, self._command)
         self._active = False
+        try:
+            self._commands[self._command[1:]]()
+        except KeyError:
+            self.set_content(self._screen_h-1, 0, "> unkown command")
         self.dispatch(Events.K_ESC, None)
 
     def _on_esc_keypress(self, arg) -> None:
@@ -439,8 +454,8 @@ def draw_menu(stdscr):
     cursor.move()
     while not stop:
 
-        if counter > 10:
-            stop = True
+        # if counter > 10:
+        #     stop = True
 
         kinput.listen()
         cursor.move()
