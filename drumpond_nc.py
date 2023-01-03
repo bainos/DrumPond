@@ -334,6 +334,80 @@ class CommandLine(Row):
         self.set_content(self._screen_h-1, 0, self._command, str(self._x))
 
 
+class DrumTab(Component):
+
+    def __init__(self, stdscr: window) -> None:
+        super().__init__("drumtab", stdscr)
+
+    def draw(self) -> (int, int):
+        height, width = self._stdscr.getmaxyx()
+        # Render drumtab bar
+        pitches = ["ride", "sn", "bd", "chp"]
+        time = "4/4"
+        beats, division = time.split('/')
+        beats = int(beats)
+        division = int(division)
+        subdivision = 16
+        # measures = 2
+        sep = '|'
+        note = '-'
+
+        drumtab_height = len(pitches) + 1
+        drumtab_rows_max = (height - 6) // drumtab_height
+
+        notesstr_len = (subdivision // division)*beats
+        pitchesstr_len_max = 0
+        for p in pitches:
+            if len(p) > pitchesstr_len_max:
+                pitchesstr_len_max = len(p)
+
+        measures_per_row = (width - 4 - pitchesstr_len_max) // notesstr_len
+        drumtab_row_len = pitchesstr_len_max \
+            + len(sep) \
+            + (notesstr_len + len(sep))*measures_per_row
+        start_x_drumtab_row = int(
+            (width // 2) - (drumtab_row_len // 2)
+            - drumtab_row_len % 2)
+        start_y_drumtab_row = int(
+            (height // 2)
+            - (drumtab_height*drumtab_rows_max // 2)
+        )
+        cursor_x = start_x_drumtab_row + pitchesstr_len_max + 1
+        cursor_y = start_y_drumtab_row
+
+        while drumtab_rows_max > 0:
+            drumtab_rows_max = drumtab_rows_max - 1
+            for p in pitches:
+                pitches_col = " "*(pitchesstr_len_max-len(p)) + p + sep
+                notes_col = (note*notesstr_len + sep)*measures_per_row
+                drumtab_row = pitches_col + notes_col
+                self._stdscr.addstr(
+                    start_y_drumtab_row,
+                    start_x_drumtab_row,
+                    drumtab_row,
+                )
+                start_y_drumtab_row = start_y_drumtab_row + 1
+
+            drumtab_footer_pc = " "*(pitchesstr_len_max) + sep
+            drumtab_footer = ""
+            j = 1
+            for i in range(subdivision):
+                if not (i % 4):
+                    drumtab_footer = drumtab_footer + str(j)
+                    j = j + 1
+                else:
+                    drumtab_footer = drumtab_footer + "•"
+            drumtab_footer = (drumtab_footer + sep)*measures_per_row
+            self._stdscr.addstr(
+                start_y_drumtab_row,
+                start_x_drumtab_row,
+                drumtab_footer_pc + drumtab_footer,
+            )
+            start_y_drumtab_row = start_y_drumtab_row + 1
+
+        return cursor_y, cursor_x
+
+
 class MainWindow(Component):
 
     def __init__(self, stdscr: window) -> None:
@@ -354,11 +428,14 @@ class Cursor(Component):
         self._x: int = 0
         self._history: list[(int, int)] = [(0, 0)]
         self._commandline: bool = False
+        self._insert: bool = False
         self._stdscr = stdscr
         self._events_action[Events.K_LEFT.value] = self._left
         self._events_action[Events.K_UP.value] = self._up
         self._events_action[Events.K_RIGHT.value] = self._right
         self._events_action[Events.K_DOWN.value] = self._down
+        self._events_action[Events.INSERT.value] = self._on_insert
+        self._events_action[Events.K_PRESS.value] = self._on_keypress
         self._events_action[Events.COMMAND.value] = self._command_line_on
         self._events_action[Events.K_ESC.value] = self._command_line_off
         self._events_action[Events.K_ENTER.value] = self._command_line_off
@@ -400,8 +477,25 @@ class Cursor(Component):
     def restore(self) -> (int, int):
         self.coordinates = self._history.pop()
 
-    def _handle_cli(self) -> None:
-        pass
+    def _on_insert(self, args):
+        if self._insert is False:
+            self._insert = True
+
+    def _on_keypress(self, args):
+        if self._insert is True \
+            and self._stdscr.inch(self._y, self._x) == 45 \
+                and args in [
+                    111, 79,  # o, O
+                    120, 88,  # x, X
+                    103,      # g
+                    114, 82,  # r, R
+                    108, 75,  # l, L
+                    32,       # space
+                ]:
+            if args == 32:
+                args = 45
+            self._stdscr.addch(self._y, self._x, args)
+            self._right(None)
 
     def _command_line_on(self, args) -> None:
         if self._commandline is False:
@@ -413,12 +507,17 @@ class Cursor(Component):
         if self._commandline is True:
             self._commandline = False
             self.restore()
+        if self._insert is True:
+            self._insert = False
 
 
 def draw_menu(stdscr):
     curses.nonl()
     curses.set_escdelay(25)
     stdscr.clear()
+
+    dt = DrumTab(stdscr)
+    start_y, start_x = dt.draw()
 
     kinput = KInput(stdscr)
     header = Header(stdscr)
@@ -443,11 +542,12 @@ def draw_menu(stdscr):
     kinput.register(Events.MODE_CHANGE, cli)
     kinput.register(Events.MODE_CHANGE, statusbar)
 
+    kinput.register(Events.K_PRESS, cursor)
     kinput.register(Events.K_PRESS, cli)
 
     kinput.register(Events.K_ENTER, cli)
 
-    cursor.coordinates = (1, 0)
+    cursor.coordinates = (start_y, start_x)
     stdscr.refresh()
     counter = 0
     stop = False
