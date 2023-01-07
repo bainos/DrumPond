@@ -15,6 +15,7 @@ class InputMode(Enum):
 
 class Events(Enum):
     CURSOR_MOVE = 0
+    CURSOR_SET = auto()
     K_LEFT = auto()
     K_UP = auto()
     K_RIGHT = auto()
@@ -30,6 +31,7 @@ class Events(Enum):
     VISUAL = auto()
     PLAYBACK = auto()
     COMMAND_SEND = auto()
+    DRUMTAB_READY = auto()
 
 
 class Component():
@@ -260,18 +262,38 @@ class StatusBar(Row):
         self._on_mode_change(InputMode.PLAYBACK)
 
 
-class Commands():
+class Commands(Component):
 
-    def __init__(self):
+    def __init__(self, stdscr):
+        super().__init__("commands", stdscr)
+        self.ymin = self.xmin = self.ymax = self.xmax = 0
+        self._events_action[Events.DRUMTAB_READY.value] \
+            = self._on_drumtab_ready
         self.commands = {}
         for element in inspect.getmembers(
                 self, predicate=inspect.ismethod):
             self.commands[element[0]] = element[1]
 
-    def quit(self):
+    def quit(self, arg=None):
         raise SystemExit
 
     q = quit
+
+    def write(self, arg=None) -> None:
+        row = self.ymin
+        while row <= self.ymax - 1:
+            col = self.xmin
+            while col < self.xmax - 1:
+                if self._stdscr.inch(row, col) == ord('o'):
+                    self._stdscr.addch(row, col, ord('#'))
+                col = col + 1
+                self.dispatch(Events.CURSOR_SET, (row, col))
+            row = row + 1
+
+    w = write
+
+    def _on_drumtab_ready(self, arg) -> None:
+        self.ymin, self.xmin, self.ymax, self.xmax = arg
 
 
 class CommandLine(Row):
@@ -282,10 +304,16 @@ class CommandLine(Row):
         self._events_action[Events.K_ENTER.value] = self._on_enter_keypress
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.K_PRESS.value] = self._on_keypress
+        self._events_action[Events.DRUMTAB_READY.value] \
+            = self._on_drumtab_ready
         self._y, self._x = (self._screen_h-1, 1)
         self._history: list = list()
-        self._commands: dict = Commands().commands
+        self._commands: dict = {}
+        self._cmd_arg = None
         self._active: bool = False
+
+    def register_commands(self, commands: dict):
+        self._commands = commands
 
     def update_command(self, c: int) -> None:
         to_list = list(self._command)
@@ -296,6 +324,9 @@ class CommandLine(Row):
         to_list = list(self._command)
         to_list.pop(self._x-1)
         self._command = "".join(to_list)
+
+    def _on_drumtab_ready(self, arg) -> None:
+        self._cmd_arg = arg
 
     def _on_command(self, arg) -> None:
         self._active = True
@@ -323,7 +354,8 @@ class CommandLine(Row):
         self.dispatch(Events.COMMAND_SEND, self._command)
         self._active = False
         try:
-            self._commands[self._command[1:]]()
+            self._commands[self._command[1:]](self._cmd_arg)
+            self._cmd_arg = None
         except KeyError:
             self.set_content(self._screen_h-1, 0, "> unkown command")
         self.dispatch(Events.K_ESC, None)
@@ -374,6 +406,13 @@ class DrumTab(Component):
         )
         cursor_x = start_x_drumtab_row + pitchesstr_len_max + 1
         cursor_y = start_y_drumtab_row
+        cursor_x_max = cursor_x + (notesstr_len + len(sep))*measures_per_row
+        cursor_y_max = cursor_y + drumtab_height*drumtab_rows_max - 1
+
+        self.dispatch(Events.DRUMTAB_READY, (
+            cursor_y, cursor_x,
+            cursor_y_max, cursor_x_max
+        ))
 
         while drumtab_rows_max > 0:
             drumtab_rows_max = drumtab_rows_max - 1
@@ -430,6 +469,7 @@ class Cursor(Component):
         self._commandline: bool = False
         self._insert: bool = False
         self._stdscr = stdscr
+        self._events_action[Events.CURSOR_SET.value] = self._on_cursor_set
         self._events_action[Events.K_LEFT.value] = self._left
         self._events_action[Events.K_UP.value] = self._up
         self._events_action[Events.K_RIGHT.value] = self._right
@@ -466,6 +506,10 @@ class Cursor(Component):
     def _down(self, dummy) -> None:
         if self._commandline is False:
             self.coordinates = (self._y + 1, self._x)
+
+    def _on_cursor_set(self, yx: (int, int)) -> None:
+        self._y, self._x = yx
+        self.coordinates = (self._y, self._x)
 
     def move(self) -> None:
         self._stdscr.move(self._y, self._x)
@@ -516,16 +560,19 @@ def draw_menu(stdscr):
     curses.set_escdelay(25)
     stdscr.clear()
 
-    dt = DrumTab(stdscr)
-    start_y, start_x = dt.draw()
-
     kinput = KInput(stdscr)
     header = Header(stdscr)
     statusbar = StatusBar(stdscr)
+    commands = Commands(stdscr)
     cli = CommandLine(stdscr)
+    cli.register_commands(commands.commands)
     cursor = Cursor(stdscr)
+    dt = DrumTab(stdscr)
 
     header.title = "DrumpondNC"
+
+    dt.register(Events.DRUMTAB_READY, commands)
+    commands.register(Events.CURSOR_SET, cursor)
 
     kinput.register(Events.K_ARROWS, cursor)
     cli.register(Events.K_ARROWS, cursor)
@@ -547,6 +594,7 @@ def draw_menu(stdscr):
 
     kinput.register(Events.K_ENTER, cli)
 
+    start_y, start_x = dt.draw()
     cursor.coordinates = (start_y, start_x)
     stdscr.refresh()
     counter = 0
