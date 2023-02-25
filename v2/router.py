@@ -1,89 +1,73 @@
+import threading
 import asyncio
-
 import socket
-import struct
+# import struct
+import os
+# import signal
 
-MCAST_GRP = '224.1.1.1'
-MCAST_PORT = 7581
-MULTICAST_TTL = 1
+DPSOCK = os.environ['HOME'] + '/drumpond.sock'
 
-r_sock = socket.socket(
-    socket.AF_INET,
-    socket.SOCK_STREAM,
-    # socket.IPPROTO_UDP
-)
-r_sock.setsockopt(
-    socket.SOL_SOCKET,
-    socket.SO_REUSEADDR,
-    1
-)
-
-r_sock.bind((MCAST_GRP, MCAST_PORT))
-mreq = struct.pack(
-    '4sl',
-    socket.inet_aton(MCAST_GRP),
-    socket.INADDR_ANY
-)
-
-# r_sock.setsockopt(
-#     socket.IPPROTO_IP,
-#     socket.IP_MULTICAST_TTL,
-#     mreq
-# )
-
-
-async def sreader(name: str):
+async def server(name: str):
+    r_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    r_sock.bind(DPSOCK)
+    r_sock.listen(1)
     print(f'{name} listening..')
-    listen = True
-    while listen:
-        msg = r_sock.recv(10240)
-        print(f'{name}: {msg}')
-        if msg == 'EXIT':
-            listen = False
+    connection, client_address = r_sock.accept()
+    try:
+        while True:
+            data = connection.recv(128)
+            datad = data.decode('ascii')
+            print(f'{client_address}: {datad}')
+            # r_sock.sendall(data)
+            if datad == 'EXIT':
+                break
+    finally:
+        await asyncio.sleep(1)
+        connection.close()
+        print(f'{name} connection clossed.')
+
+async def client(message: str):
+    await asyncio.sleep(1)
+    w_sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        w_sock.connect(DPSOCK)
+    except socket.error as e:
+        print(f'Connection error: {e}')
+
+    for _ in range(3):
+        w_sock.sendall(bytes(message, 'ascii'))
+        # data = w_sock.recv(128)
+        # print(f'data: {data}')
+        await asyncio.sleep(1)
+
+    w_sock.send(b'EXIT')
+    w_sock.close()
+
+def server_worker():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(server('Server Yo!'))
+    # loop.create_task(server('Server Yo!'))
+    # loop.run_forever()
+    loop.close()
 
 
-w_sock = socket.socket(
-    socket.AF_INET,
-    socket.SOCK_DGRAM,
-    socket.IPPROTO_UDP
-)
-w_sock.setsockopt(
-    socket.IPPROTO_IP,
-    socket.IP_MULTICAST_TTL,
-    MULTICAST_TTL
-)
-
-
-async def swriter(message: str):
-    for i in range(10):
-        print('send')
-        w_sock.sendto(
-            message.encode(),
-            (MCAST_GRP, MCAST_PORT)
-        )
-        await asyncio.sleep(3)
-
-    w_sock.sendto(
-        b'EXIT',
-        (MCAST_GRP, MCAST_PORT)
-    )
-
-
-def main():
-    for x in range(3):
-        sreader(f'r{x}')
-
-    asyncio.sleep(1)
-
-    swriter('Yo!')
-
+def client_worker():
+    loop = asyncio.new_event_loop()
+    loop.run_until_complete(client('c0'))
+    # loop.create_task(client('c0'))
+    # loop.run_forever()
+    loop.close()
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    tasks = [
-        loop.create_task(swriter('Yo!')),
-        loop.create_task(sreader('r0')),
-        loop.create_task(sreader('r1')),
-        loop.create_task(sreader('r2')),
-    ]
-    loop.run_until_complete(asyncio.wait(tasks))
+    try:
+        os.unlink(DPSOCK)
+    except OSError:
+        if os.path.exists(DPSOCK):
+            raise
+
+
+    # for signame in {'SIGINT', 'SIGTERM'}:
+        # loop.add_signal_handler(getattr(signal, signame), loop.stop)
+
+    threading.Thread(target=server_worker).start()
+    threading.Thread(target=client_worker).start()
