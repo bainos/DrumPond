@@ -51,6 +51,21 @@ class DPServer():
                           reader: asyncio.StreamReader,
                           writer: asyncio.StreamWriter
                           ) -> None:
+        task = asyncio.current_task()
+        task_name = 'unknown-task-name'
+        if task is not None:
+            self.bg_tasks.add(task)
+            task.add_done_callback(self.bg_tasks.discard)
+            task_name = task.get_name()
+        else:
+            return
+
+        for bgt in self.bg_tasks:
+            self.l.debug(f'{task.get_name()}:bg_len:{len(self.bg_tasks)}')
+            self.l.debug(f'{task.get_name()}:bg_name:{bgt.get_name()}')
+            self.l.debug(f'{task.get_name()}:bg_coro:{bgt.get_coro()}')
+
+        self.l.debug(f'task_name:{task_name}')
         while True:
             data = await reader.read(128)
             try:
@@ -60,29 +75,44 @@ class DPServer():
                     'exception': str(e),
                     'data': data.decode(),
                     'client': str(writer.get_extra_info('peername')),
+                    'task': task_name,
                     }))
                 break
 
             if msg['name'] not in self.clients.keys():
                 addr = writer.get_extra_info('peername')
-                self.l.info(f'registering new client {msg["name"]} {addr}')
-                self.clients[f'{msg["name"]}'] = writer
+                self.l.debug(f'{task_name}:registering new client {msg["name"]} {addr}')
+                self.clients[msg["name"]] = writer
                 continue
 
             self.l.info(f'<({msg["name"]}) {msg["msg"]}')
+            if msg['msg'] == 'STOP':
+                for bgt in self.bg_tasks:
+                    self.l.debug(f'{task_name}:bg_len:{len(self.bg_tasks)}')
+                    self.l.debug(f'{task_name}:bg_name:{bgt.get_name()}')
+                    self.l.debug(f'{task_name}:bg_coro:{bgt.get_coro()}')
+                    # bgt.set_result(True)
+                # self.l.debug(
+                    # f'{task_name}: closing connection with {msg["name"]}')
+                # self.clients[msg["name"]].close()
+                # await self.clients[msg["name"]].wait_closed()
+                # del self.clients[msg["name"]]
+                break
+
             for c in self.clients.keys():
                 self.clients[c].write(data)
                 await self.clients[c].drain()
+                self.l.debug(f'>({c}) {data.decode()}')
 
-            if msg['msg'] == 'STOP':
-                self.l.info(f'stopping {self.host}:{self.port}')
-                break
+        if len(self.clients) == 0:
+            self.l.debug(f'{task_name}:no more active clients')
 
-        self.l.debug('stopping loop')
         for t in asyncio.all_tasks():
-            self.l.info(t.get_name())
+            self.l.debug(f'{task_name}:{t.get_name()}')
 
-        self.loop.stop()
+        if len(asyncio.all_tasks()) == 1:
+            self.l.debug(f'{task_name}:stopping loop')
+            # self.loop.stop()
 
     def _start(self):
         t_server = self.loop.create_task(
@@ -90,7 +120,8 @@ class DPServer():
                     self._handle_msg,
                     host=self.host,
                     port=self.port,
-                    )
+                    ),
+                name='DPServer',
                 )
         self.bg_tasks.add(t_server)
         t_server.add_done_callback(self.bg_tasks.discard)
@@ -112,8 +143,8 @@ class DPClient():
         self.name: str = name
         self.remote_host: str = remote_host
         self.remote_port: int = remote_port
-        self.host: str | None 
-        self.port: int | None 
+        self.host: str | None
+        self.port: int | None
         self.reader: asyncio.StreamReader | None
         self.writer: asyncio.StreamWriter | None
         self.bg_tasks: set[asyncio.Task] = set()
@@ -147,32 +178,33 @@ class DPClient():
         self.l.info(f'< {message}')
 
     async def _listen(self):
-        self.l.debug(f'active {self.active}')
+        task = asyncio.current_task()
+        task_name = 'unknown-task-name'
+        if task is not None:
+            task_name = task.get_name()
+        self.l.debug(f'{task_name}:active {self.active}')
         await asyncio.sleep(0.1)
         if not self.active or self.reader is None:
             await asyncio.sleep(0.1)
             await self._listen()
 
-        while self.active and self.reader is not None:
-            self.l.debug('listening')
+        while self.reader is not None:
+            self.l.debug(f'{task_name}:listening')
+            if self.reader is None:
+                self.l.error(f'{task_name}:connection lost')
+                raise
             data = await self.reader.read(128)
             msg = json.loads(data.decode())
-            if msg['msg'] == 'STOP':
-                if self.writer is None:
-                    self.l.error('connection lost')
-                    raise
-                self.l.info(f'stopping {self.host}:{self.port}')
-                self.writer.close()
-                await self.writer.wait_closed()
-                break
+            # if msg['msg'] == 'STOP':
+                # self.l.debug(f'{task_name}:STOP received')
+                # break
 
             if msg['name'] != self.name:
                 await self._handle_msg(msg['msg'])
 
-        self.l.debug('stopping loop')
-        for t in asyncio.all_tasks():
-            self.l.info(t.get_name())
-
+        self.l.debug(f'{task_name}:stopping loop')
+        if task is not None:
+            task.set_result(True)
         self.loop.stop()
 
     async def send(self, message: str) -> None:
@@ -185,8 +217,10 @@ class DPClient():
         await self.writer.drain()
 
     def _start(self) -> None:
-        t_conn = self.loop.create_task(self._open_connection())
-        t_listen = self.loop.create_task(self._listen())
+        t_conn = self.loop.create_task(self._open_connection(),
+                                       name=f'{self.name}_c')
+        t_listen = self.loop.create_task(self._listen(),
+                                         name=f'{self.name}_l')
         self.bg_tasks.add(t_conn)
         self.bg_tasks.add(t_listen)
         t_conn.add_done_callback(self.bg_tasks.discard)
@@ -201,15 +235,15 @@ class DPClient():
 from time import sleep
 if __name__ == '__main__':
     dp_server = DPServer('router')
-    dp_server.log_level(logging.INFO)
+    dp_server.log_level(logging.DEBUG)
     dp_server.start()
 
     dp_client_1 = DPClient('dp_client_1')
-    dp_client_1.log_level(logging.INFO)
+    dp_client_1.log_level(logging.ERROR)
     dp_client_1.start()
 
     dp_client_2 = DPClient('dp_client_2')
-    dp_client_2.log_level(logging.INFO)
+    dp_client_2.log_level(logging.ERROR)
     dp_client_2.start()
 
     sleep(1)
@@ -217,9 +251,9 @@ if __name__ == '__main__':
     sleep(1)
     asyncio.run(dp_client_2.send('yeah!'))
     sleep(1)
-    # asyncio.run(dp_client_1.send('sbam!'))
-    # sleep(1)
-    # asyncio.run(dp_client_2.send('yo!'))
-    # sleep(1)
+    asyncio.run(dp_client_1.send('sbam!'))
+    sleep(1)
+    asyncio.run(dp_client_2.send('yo!'))
+    sleep(1)
     asyncio.run(dp_client_1.send('STOP'))
 

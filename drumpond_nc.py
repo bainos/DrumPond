@@ -1,8 +1,8 @@
-import inspect
 import curses
-
+import inspect
 from curses import window
 from enum import Enum, auto
+from typing import Tuple
 
 
 class InputMode(Enum):
@@ -34,8 +34,7 @@ class Events(Enum):
     DRUMTAB_READY = auto()
 
 
-class Component():
-
+class Component:
     def __init__(self, name: str, stdscr: window) -> None:
         self._name = name
         self._stdscr = stdscr
@@ -61,8 +60,8 @@ class Component():
         return self._events
 
     @property
-    def screen_size(self) -> (int, int):
-        return self._screen_h-1, self._screen_w-1
+    def screen_size(self) -> Tuple[int, int]:
+        return self._screen_h - 1, self._screen_w - 1
 
     @screen_size.setter
     def screen_size(self, h: int, w: int) -> None:
@@ -83,7 +82,7 @@ class Component():
     def register(self, event: Events, who):
         if event not in Events:
             raise ValueError("Unknow event: {}".format(event))
-        assert(isinstance(who, Component))
+        assert isinstance(who, Component)
         if event == Events.K_ARROWS:
             self.get_subscribers(Events.K_ARROWS).append(who)
             self.get_subscribers(Events.K_LEFT).append(who)
@@ -124,7 +123,6 @@ class Component():
 
 
 class KInput(Component):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("kinput", stdscr)
         self._stdscr = stdscr
@@ -138,10 +136,10 @@ class KInput(Component):
         self._actions[10] = (Events.K_ENTER, None)
         self._actions[13] = (Events.K_ENTER, None)
         self._actions[27] = (Events.K_ESC, None)
-        self._actions[ord(':')] = (Events.COMMAND, InputMode.COMMAND)
-        self._actions[ord('i')] = (Events.INSERT, InputMode.INSERT)
-        self._actions[ord('v')] = (Events.VISUAL, InputMode.VISUAL)
-        self._actions[ord('p')] = (Events.PLAYBACK, InputMode.PLAYBACK)
+        self._actions[ord(":")] = (Events.COMMAND, InputMode.COMMAND)
+        self._actions[ord("i")] = (Events.INSERT, InputMode.INSERT)
+        self._actions[ord("v")] = (Events.VISUAL, InputMode.VISUAL)
+        self._actions[ord("p")] = (Events.PLAYBACK, InputMode.PLAYBACK)
 
     def listen(self) -> bool:
         self._k = self._stdscr.getch()
@@ -157,12 +155,10 @@ class KInput(Component):
         else:
             self.dispatch(Events.K_PRESS, self._k)
         if self._actions[self._k] is not None:
-            self.dispatch(self._actions[self._k][0],
-                          self._actions[self._k][1])
+            self.dispatch(self._actions[self._k][0], self._actions[self._k][1])
 
 
 class Row(Component):
-
     def __init__(self, name: str, stdscr: window) -> None:
         super().__init__(name, stdscr)
         self._length = self.screen_size[1]
@@ -188,7 +184,6 @@ class Row(Component):
 
 
 class Header(Row):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("header", stdscr)
 
@@ -204,14 +199,11 @@ class Header(Row):
 
 
 class StatusBar(Row):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("statusbar", stdscr)
         h, w = self.screen_size
         self._h = h - 1
-        self.set_content(self._h, 0,
-                         "Wellcome (:",
-                         "0,0")
+        self.set_content(self._h, 0, "Wellcome (:", "0,0")
         self._events_action[Events.CURSOR_MOVE.value] = self._on_cursor_move
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.MODE_CHANGE.value] = self._on_mode_change
@@ -231,9 +223,7 @@ class StatusBar(Row):
 
     def _on_cursor_move(self, yx: (int, int)) -> None:
         y, x = yx
-        self.set_content(self._h, 0,
-                         self._content_l,
-                         "{},{}".format(str(y), str(x)))
+        self.set_content(self._h, 0, self._content_l, "{},{}".format(str(y), str(x)))
 
     def _on_esc_keypress(self, dummy) -> None:
         if super()._on_esc_keypress(None):
@@ -263,15 +253,12 @@ class StatusBar(Row):
 
 
 class Commands(Component):
-
     def __init__(self, stdscr):
         super().__init__("commands", stdscr)
         self.ymin = self.xmin = self.ymax = self.xmax = 0
-        self._events_action[Events.DRUMTAB_READY.value] \
-            = self._on_drumtab_ready
+        self._events_action[Events.DRUMTAB_READY.value] = self._on_drumtab_ready
         self.commands = {}
-        for element in inspect.getmembers(
-                self, predicate=inspect.ismethod):
+        for element in inspect.getmembers(self, predicate=inspect.ismethod):
             self.commands[element[0]] = element[1]
 
     def quit(self, arg=None):
@@ -284,8 +271,8 @@ class Commands(Component):
         while row <= self.ymax - 1:
             col = self.xmin
             while col < self.xmax - 1:
-                if self._stdscr.inch(row, col) == ord('o'):
-                    self._stdscr.addch(row, col, ord('#'))
+                if self._stdscr.inch(row, col) == ord("o"):
+                    self._stdscr.addch(row, col, ord("#"))
                 col = col + 1
                 self.dispatch(Events.CURSOR_SET, (row, col))
             row = row + 1
@@ -297,16 +284,14 @@ class Commands(Component):
 
 
 class CommandLine(Row):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("command_line", stdscr)
         self._events_action[Events.COMMAND.value] = self._on_command
         self._events_action[Events.K_ENTER.value] = self._on_enter_keypress
         self._events_action[Events.K_ESC.value] = self._on_esc_keypress
         self._events_action[Events.K_PRESS.value] = self._on_keypress
-        self._events_action[Events.DRUMTAB_READY.value] \
-            = self._on_drumtab_ready
-        self._y, self._x = (self._screen_h-1, 1)
+        self._events_action[Events.DRUMTAB_READY.value] = self._on_drumtab_ready
+        self._y, self._x = (self._screen_h - 1, 1)
         self._history: list = list()
         self._commands: dict = {}
         self._cmd_arg = None
@@ -322,7 +307,7 @@ class CommandLine(Row):
 
     def handle_backspace(self) -> None:
         to_list = list(self._command)
-        to_list.pop(self._x-1)
+        to_list.pop(self._x - 1)
         self._command = "".join(to_list)
 
     def _on_drumtab_ready(self, arg) -> None:
@@ -331,7 +316,7 @@ class CommandLine(Row):
     def _on_command(self, arg) -> None:
         self._active = True
         self._command = ":"
-        self.set_content(self._screen_h-1, 0, self._command)
+        self.set_content(self._screen_h - 1, 0, self._command)
         self.dispatch(Events.K_RIGHT, curses.KEY_RIGHT)
 
     def _on_keypress(self, arg) -> None:
@@ -347,7 +332,7 @@ class CommandLine(Row):
             self.handle_backspace()
             self.dispatch(Events.K_LEFT, curses.KEY_LEFT)
             self._x = self._x - 1
-        self.set_content(self._screen_h-1, 0, self._command, str(arg))
+        self.set_content(self._screen_h - 1, 0, self._command, str(arg))
 
     def _on_enter_keypress(self, arg) -> None:
         self._history.append(self._command)
@@ -357,17 +342,16 @@ class CommandLine(Row):
             self._commands[self._command[1:]](self._cmd_arg)
             self._cmd_arg = None
         except KeyError:
-            self.set_content(self._screen_h-1, 0, "> unkown command")
+            self.set_content(self._screen_h - 1, 0, "> unkown command")
         self.dispatch(Events.K_ESC, None)
 
     def _on_esc_keypress(self, arg) -> None:
         self._active = False
         self.dispatch(Events.K_ESC, None)
-        self.set_content(self._screen_h-1, 0, self._command, str(self._x))
+        self.set_content(self._screen_h - 1, 0, self._command, str(self._x))
 
 
 class DrumTab(Component):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("drumtab", stdscr)
 
@@ -376,49 +360,47 @@ class DrumTab(Component):
         # Render drumtab bar
         pitches = ["ride", "sn", "bd", "chp"]
         time = "4/4"
-        beats, division = time.split('/')
+        beats, division = time.split("/")
         beats = int(beats)
         division = int(division)
         subdivision = 16
         # measures = 2
-        sep = '|'
-        note = '-'
+        sep = "|"
+        note = "-"
 
         drumtab_height = len(pitches) + 1
         drumtab_rows_max = (height - 6) // drumtab_height
 
-        notesstr_len = (subdivision // division)*beats
+        notesstr_len = (subdivision // division) * beats
         pitchesstr_len_max = 0
         for p in pitches:
             if len(p) > pitchesstr_len_max:
                 pitchesstr_len_max = len(p)
 
         measures_per_row = (width - 4 - pitchesstr_len_max) // notesstr_len
-        drumtab_row_len = pitchesstr_len_max \
-            + len(sep) \
-            + (notesstr_len + len(sep))*measures_per_row
+        drumtab_row_len = (
+            pitchesstr_len_max + len(sep) + (notesstr_len + len(sep)) * measures_per_row
+        )
         start_x_drumtab_row = int(
-            (width // 2) - (drumtab_row_len // 2)
-            - drumtab_row_len % 2)
+            (width // 2) - (drumtab_row_len // 2) - drumtab_row_len % 2
+        )
         start_y_drumtab_row = int(
-            (height // 2)
-            - (drumtab_height*drumtab_rows_max // 2)
+            (height // 2) - (drumtab_height * drumtab_rows_max // 2)
         )
         cursor_x = start_x_drumtab_row + pitchesstr_len_max + 1
         cursor_y = start_y_drumtab_row
-        cursor_x_max = cursor_x + (notesstr_len + len(sep))*measures_per_row
-        cursor_y_max = cursor_y + drumtab_height*drumtab_rows_max - 1
+        cursor_x_max = cursor_x + (notesstr_len + len(sep)) * measures_per_row
+        cursor_y_max = cursor_y + drumtab_height * drumtab_rows_max - 1
 
-        self.dispatch(Events.DRUMTAB_READY, (
-            cursor_y, cursor_x,
-            cursor_y_max, cursor_x_max
-        ))
+        self.dispatch(
+            Events.DRUMTAB_READY, (cursor_y, cursor_x, cursor_y_max, cursor_x_max)
+        )
 
         while drumtab_rows_max > 0:
             drumtab_rows_max = drumtab_rows_max - 1
             for p in pitches:
-                pitches_col = " "*(pitchesstr_len_max-len(p)) + p + sep
-                notes_col = (note*notesstr_len + sep)*measures_per_row
+                pitches_col = " " * (pitchesstr_len_max - len(p)) + p + sep
+                notes_col = (note * notesstr_len + sep) * measures_per_row
                 drumtab_row = pitches_col + notes_col
                 self._stdscr.addstr(
                     start_y_drumtab_row,
@@ -427,7 +409,7 @@ class DrumTab(Component):
                 )
                 start_y_drumtab_row = start_y_drumtab_row + 1
 
-            drumtab_footer_pc = " "*(pitchesstr_len_max) + sep
+            drumtab_footer_pc = " " * (pitchesstr_len_max) + sep
             drumtab_footer = ""
             j = 1
             for i in range(subdivision):
@@ -436,7 +418,7 @@ class DrumTab(Component):
                     j = j + 1
                 else:
                     drumtab_footer = drumtab_footer + "•"
-            drumtab_footer = (drumtab_footer + sep)*measures_per_row
+            drumtab_footer = (drumtab_footer + sep) * measures_per_row
             self._stdscr.addstr(
                 start_y_drumtab_row,
                 start_x_drumtab_row,
@@ -448,7 +430,6 @@ class DrumTab(Component):
 
 
 class MainWindow(Component):
-
     def __init__(self, stdscr: window) -> None:
         super().__init__("main_window", stdscr)
         self._components: dict = dict()
@@ -526,16 +507,23 @@ class Cursor(Component):
             self._insert = True
 
     def _on_keypress(self, args):
-        if self._insert is True \
-            and self._stdscr.inch(self._y, self._x) == 45 \
-                and args in [
-                    111, 79,  # o, O
-                    120, 88,  # x, X
-                    103,      # g
-                    114, 82,  # r, R
-                    108, 75,  # l, L
-                    32,       # space
-                ]:
+        if (
+            self._insert is True
+            and self._stdscr.inch(self._y, self._x) == 45
+            and args
+            in [
+                111,
+                79,  # o, O
+                120,
+                88,  # x, X
+                103,  # g
+                114,
+                82,  # r, R
+                108,
+                75,  # l, L
+                32,  # space
+            ]
+        ):
             if args == 32:
                 args = 45
             self._stdscr.addch(self._y, self._x, args)
@@ -545,7 +533,7 @@ class Cursor(Component):
         if self._commandline is False:
             self._commandline = True
             self.save()
-            self.coordinates = (self._screen_h-1, 0)
+            self.coordinates = (self._screen_h - 1, 0)
 
     def _command_line_off(self, args) -> None:
         if self._commandline is True:
