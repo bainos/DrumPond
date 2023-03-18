@@ -2,6 +2,7 @@ import threading
 import asyncio
 import json
 
+from typing import Callable
 from dp_utils import DPUtils
 
 
@@ -22,17 +23,33 @@ class DPClient():
         self.bg_tasks: set[asyncio.Task] = set()
         self.active: bool = False
         self.stop_request: asyncio.Event = asyncio.Event()
-        self.l = DPUtils().get_logger(f'{__name__}:{name}')
+        self.l= DPUtils.get_logger(name=name,
+                                   output='socket')
+
+        @staticmethod
+        async def _handle_msg(message: str) -> None:
+            self.l.info(f'< {message}')
+
+        self._callback: Callable = _handle_msg
 
     def log_level(self, level: int) -> None:
         self.l.setLevel(level)
         for h in self.l.handlers:
             h.setLevel(level)
 
-    async def _handle_msg(self, message: str):
-        self.l.info(f'< {message}')
+    def set_callback(self, cb: Callable) -> None:
+        self._callback = cb
 
-    async def _listen(self):
+    async def send(self, message: str) -> None:
+        self.l.debug(f'> {message}')
+        msg = json.dumps({'name': self.name,'msg': message})
+        if self.writer is None:
+            self.l.error('connection lost')
+            raise
+        self.writer.write(msg.encode())
+        await self.writer.drain()
+
+    async def _listen(self) -> None:
         task = asyncio.current_task()
         task_name = 'unknown-task-name'
         if task is not None:
@@ -56,48 +73,35 @@ class DPClient():
                 break
 
             if msg['name'] != self.name:
-                await self._handle_msg(msg['msg'])
+                await self._callback(msg['msg'])
 
         self.l.debug(f'{task_name}:stopping')
 
     async def _open_connection(self):
-        self.l.info('opening connection')
+        self.l.debug('opening connection')
         self.reader, self.writer = await asyncio.open_connection(
                 self.remote_host,
                 self.remote_port,
             )
         self.host, self.port = self.writer.get_extra_info('peername')
         self.active = True
-        self.l.info(f'client ready for {self.host}:{self.port}')
+        self.l.info(f'connection to {self.host}:{self.port} ready')
         await self.send('register me')
         await self._listen()
 
-    async def send(self, message: str) -> None:
-        self.l.info(f'> {message}')
-        msg = json.dumps({'name': self.name,'msg': message})
-        if self.writer is None:
-            self.l.error('connection lost')
-            raise
-        self.writer.write(msg.encode())
-        await self.writer.drain()
-
-    async def main(self) -> None:
+    async def _main(self) -> None:
         t_conn = asyncio.create_task(self._open_connection(),
                                        name=f'{self.name}_c')
-        # t_listen = asyncio.create_task(self._listen(),
-                                         # name=f'{self.name}_l')
         self.bg_tasks.add(t_conn)
-        # self.bg_tasks.add(t_listen)
         t_conn.add_done_callback(self.bg_tasks.discard)
-        # t_listen.add_done_callback(self.bg_tasks.discard)
         await self.stop_request.wait()
         self.stop_request.clear()
-        self.l.info('stopping the client')
+        self.l.info('stopping')
 
     def _start(self) -> None:
-        asyncio.run(self.main())
+        asyncio.run(self._main())
 
-    def start(self):
-        self.l.info('starting')
+    def start(self) -> None:
+        self.l.debug('starting')
         threading.Thread(target=self._start).start()
 
