@@ -7,7 +7,7 @@ import struct
 import pickle
 
 from typing import Callable
-from dp_utils import DPUtils
+from .dp_utils import DPUtils
 
 
 class BServer():
@@ -114,7 +114,7 @@ class DPLogger(DPServer):
                  port: int = 9488) -> None:
         super().__init__(name, host, port)
         self.l = DPUtils.get_logger(name='dplogger',
-                                    output='std')
+                                    output='file')
         self.set_callback(self._handle_msg)
 
     async def _handle_msg(self,

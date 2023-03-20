@@ -3,7 +3,7 @@ import asyncio
 import json
 
 from typing import Callable
-from dp_utils import DPUtils
+from .dp_utils import DPUtils
 
 
 class DPClient():
@@ -20,6 +20,7 @@ class DPClient():
         self.port: int | None
         self.reader: asyncio.StreamReader | None
         self.writer: asyncio.StreamWriter | None
+        self.additional_tasks: list[Callable] = list()
         self.bg_tasks: set[asyncio.Task] = set()
         self.active: bool = False
         self.stop_request: asyncio.Event = asyncio.Event()
@@ -91,9 +92,15 @@ class DPClient():
 
     async def _main(self) -> None:
         t_conn = asyncio.create_task(self._open_connection(),
-                                       name=f'{self.name}_c')
+                                     name=f'{self.name}_c')
         self.bg_tasks.add(t_conn)
         t_conn.add_done_callback(self.bg_tasks.discard)
+
+        for c in self.additional_tasks:
+            t = asyncio.create_task(c(),name=f'{self.name}_{c.__name__}')
+            self.bg_tasks.add(t)
+            t.add_done_callback(self.bg_tasks.discard)
+
         await self.stop_request.wait()
         self.stop_request.clear()
         self.l.info('stopping')
