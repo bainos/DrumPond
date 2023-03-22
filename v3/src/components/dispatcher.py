@@ -10,5 +10,5 @@ class Dispatcher(DPServer):
     def start(self) -> None:
         dp_logger = DPLogger('logger')
         dp_logger.log_level(DEBUG)
-        dp_logger.start()
-        super().start()
+        dp_logger.start(in_thread=True)
+        super().start(in_thread=True)

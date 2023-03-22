@@ -1,7 +1,5 @@
 import asyncio
-from curses import ERR
 from curses import window
-import curses
 from ..core.dp_client import DPClient
 
 
@@ -27,18 +25,13 @@ class Input(DPClient):
 
         while True:
             self._k = self._stdscr.getch()
-            if self._k == ERR:
-                # print(f'PUPPA-ERR ({ERR!r})')
-                await asyncio.sleep(0.01)
-            elif chr(self._k) == 'q':
+            if chr(self._k) == 'q':
                 await self.send('STOP')
                 self.stop_request.set()
                 break
             else:
                 self.l.debug(f'getch: {chr(self._k)}')
+                await self.send(self._k)
 
         self.l.debug(f'{task_name}:stopping')
 
-    def start(self) -> None:
-        self.l.debug('starting')
-        asyncio.run(self._main())

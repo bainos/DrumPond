@@ -51,10 +51,12 @@ class BServer():
     def _start(self) -> None:
         asyncio.run(self._main())
 
-    def start(self) -> None:
+    def start(self, in_thread: bool=False) -> None:
         self.l.debug('starting')
-        threading.Thread(target=self._start).start()
-
+        if in_thread:
+            threading.Thread(target=self._start).start()
+            return
+        self._start()
 
 class DPServer(BServer):
     def __init__(self, name: str, host: str = '127.0.0.1',

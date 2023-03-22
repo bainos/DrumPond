@@ -27,8 +27,7 @@ class DPClient():
         self.l= DPUtils.get_logger(name=name,
                                    output='socket')
 
-        @staticmethod
-        async def _handle_msg(message: str) -> None:
+        async def _handle_msg(self, message: str) -> None:
             self.l.info(f'< {message}')
 
         self._callback: Callable = _handle_msg
@@ -38,11 +37,14 @@ class DPClient():
         for h in self.l.handlers:
             h.setLevel(level)
 
+    def set_listener(self, l: Callable) -> None:
+        self._listener = l
+
     def set_callback(self, cb: Callable) -> None:
         self._callback = cb
 
-    async def send(self, message: str) -> None:
-        self.l.debug(f'> {message}')
+    async def send(self, message: str|int) -> None:
+        self.l.debug(f'> {message!r}')
         msg = json.dumps({'name': self.name,'msg': message})
         if self.writer is None:
             self.l.error('connection lost')
@@ -108,7 +110,10 @@ class DPClient():
     def _start(self) -> None:
         asyncio.run(self._main())
 
-    def start(self) -> None:
+    def start(self, in_thread: bool=False) -> None:
         self.l.debug('starting')
-        threading.Thread(target=self._start).start()
+        if in_thread:
+            threading.Thread(target=self._start).start()
+            return
+        self._start()
 
