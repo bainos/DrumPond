@@ -1,5 +1,6 @@
 import asyncio
 from curses import window
+from ..core import dp_shm as shm
 from ..core.dp_client import DPClient
 
 
@@ -9,6 +10,8 @@ class Input(DPClient):
                  remote_port: int = 7581) -> None:
         self._k = 0
         self._stdscr = stdscr
+
+        shm.init()
 
         super().__init__('input', remote_host, remote_port)
 
@@ -30,8 +33,11 @@ class Input(DPClient):
                 self.stop_request.set()
                 break
             else:
-                self.l.debug(f'getch: {chr(self._k)}')
                 await self.send(self._k)
+                self.l.debug(
+                        f'getch: {chr(self._k)}'
+                        f'|{shm.registry}'
+                        )
 
         self.l.debug(f'{task_name}:stopping')
 

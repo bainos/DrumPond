@@ -1,6 +1,7 @@
 from curses import window
 from curses import KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT
 from typing import Callable
+from ..core import dp_shm as shm
 from ..core.dp_client import DPClient, json
 
 
@@ -16,6 +17,8 @@ class Cursor(DPClient):
         self._minx: int = 2
         self._y: int = 3
         self._x: int = 2
+
+        shm.init()
 
         super().__init__('cursor', remote_host, remote_port)
         self._move: dict[int, Callable] = dict()
@@ -36,6 +39,8 @@ class Cursor(DPClient):
         if x <= self._maxx and x >= self._minx:
             self._x = x
         self._stdscr.move(self._y, self._x)
+        shm.kset('y', self._y)
+        shm.kset('x', self._x)
         await self.send(json.dumps((self._y, self._x)))
 
     async def _left(self) -> None:

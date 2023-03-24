@@ -1,5 +1,6 @@
 import curses
 from logging import DEBUG
+from src.core import dp_shm as shm
 from src.components.dispatcher import Dispatcher
 from src.components.input import Input
 from src.components.cursor import Cursor
@@ -20,6 +21,8 @@ def draw(stdscr: curses.window) -> None:
     i.start()
 
 if __name__ == '__main__':
+    shm.init()
     d = Dispatcher()
     d.start()
     curses.wrapper(draw)
+    shm.release()
