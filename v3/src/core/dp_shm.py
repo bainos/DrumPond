@@ -21,9 +21,15 @@ def _load() -> None:
 def init() -> None:
     _save()
 
-def kset(k, v) -> None:
+def kset(k: str, v: str|int) -> None:
     _load()
     registry[k] = v
+    _save()
+
+def dset(d: dict[str,str|int]) -> None:
+    _load()
+    for k in d.keys():
+        registry[k] = d[k]
     _save()
 
 def release() -> None:

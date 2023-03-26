@@ -12,6 +12,13 @@ def draw(stdscr: curses.window) -> None:
     stdscr.box()
     stdscr.refresh()
 
+    maxy, maxx = stdscr.getmaxyx()
+    shm.dset({
+        'winh': maxy,   'winw': maxx,
+        'maxy': maxy-2, 'maxx': maxx-2,
+        'miny': 3,      'minx': 2
+        })
+
     c = Cursor(stdscr)
     c.log_level(DEBUG)
     c.start(in_thread=True)

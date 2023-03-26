@@ -1,26 +1,20 @@
+import json
 from curses import window
 from curses import KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT
 from typing import Callable
+from .base_component import BaseComponent
 from ..core import dp_shm as shm
-from ..core.dp_client import DPClient, json
 
 
-class Cursor(DPClient):
+class Cursor(BaseComponent):
     def __init__(self, stdscr: window,
                  remote_host: str = '127.0.0.1',
                  remote_port: int = 7581) -> None:
-        maxy, maxx = stdscr.getmaxyx()
-        self._stdscr: window = stdscr
-        self._maxy: int = maxy - 2
-        self._maxx: int = maxx - 2
-        self._miny: int = 3
-        self._minx: int = 2
-        self._y: int = 3
-        self._x: int = 2
+        self._y: int = shm.registry['miny']
+        self._x: int = shm.registry['minx']
 
-        shm.init()
-
-        super().__init__('cursor', remote_host, remote_port)
+        super().__init__('cursor', stdscr,
+                         remote_host, remote_port)
         self._move: dict[int, Callable] = dict()
         self._move[KEY_LEFT] = self._left
         self._move[KEY_DOWN] = self._down
@@ -34,13 +28,12 @@ class Cursor(DPClient):
         return self._x, self._y
 
     async def set_coordinates(self, y: int, x: int) -> None:
-        if y <= self._maxy and y >= self._miny:
+        if y <= shm.registry['maxy'] and y >= shm.registry['miny']:
             self._y = y
-        if x <= self._maxx and x >= self._minx:
+        if x <= shm.registry['maxx'] and x >= shm.registry['minx']:
             self._x = x
         self._stdscr.move(self._y, self._x)
-        shm.kset('y', self._y)
-        shm.kset('x', self._x)
+        shm.dset({'y': self._y,'x': self._x})
         await self.send(json.dumps((self._y, self._x)))
 
     async def _left(self) -> None:
@@ -57,6 +50,5 @@ class Cursor(DPClient):
 
     async def _handle_arrows(self, msg) -> None:
         if msg in (KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT):
-            self.l.debug(msg)
             await self._move[msg]()
-            self._stdscr.refresh()
+            await self._handle_input(msg)
