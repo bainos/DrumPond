@@ -1,6 +1,8 @@
+# import asyncio
 from curses import window
 from ..core.dp_client import DPClient
 from ..core import dp_shm as shm
+from ..constants import events as E
 
 
 class BaseComponent(DPClient):
@@ -8,10 +10,6 @@ class BaseComponent(DPClient):
         super().__init__(name, remote_host, remote_port)
         self._stdscr = stdscr
 
-    async def _handle_input(self, msg) -> None:
-        self.l.debug(f'< {msg}')
-        # self._stdscr.refresh()
-        self._stdscr.noutrefresh()
 
 class Row(BaseComponent):
     def __init__(self, name: str, stdscr: window,
@@ -42,7 +40,7 @@ class Row(BaseComponent):
 
 class Header(Row):
     def __init__(self, stdscr: window) -> None:
-        super().__init__("header", stdscr)
+        super().__init__('header', stdscr)
 
     @property
     def title(self) -> str:
@@ -53,4 +51,21 @@ class Header(Row):
         r = "{}x{}".format(str(shm.registry['winh']),
                            str(shm.registry['winw']))
         self.set_content(0, 0, title, r)
+
+
+class StatusBar(Row):
+    def __init__(self, stdscr: window) -> None:
+        super().__init__('statusbar', stdscr)
+        self.set_content(shm.registry['maxy']-2, 0,
+             shm.registry['mode'],
+             f'{shm.registry["y"]},{shm.registry["x"]}')
+        self.set_callback(self._update)
+
+    async def _update(self, msg) -> None:
+        self.l.debug(f'statusbar update ({msg!r})')
+        self.set_content(shm.registry['maxy']-2, 0,
+             shm.registry['mode'],
+             f'{shm.registry["y"]}:{shm.registry["x"]}')
+        self._stdscr.noutrefresh()
+        await self.send(E.CURSOR_MOVE)
 

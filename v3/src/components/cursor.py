@@ -1,9 +1,9 @@
-import json
 from curses import window
 from curses import KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT
 from typing import Callable
 from .base_component import BaseComponent
 from ..core import dp_shm as shm
+from ..constants import events as E
 
 
 class Cursor(BaseComponent):
@@ -32,9 +32,7 @@ class Cursor(BaseComponent):
             self._y = y
         if x <= shm.registry['maxx'] and x >= shm.registry['minx']:
             self._x = x
-        self._stdscr.move(self._y, self._x)
         shm.dset({'y': self._y,'x': self._x})
-        await self.send(json.dumps((self._y, self._x)))
 
     async def _left(self) -> None:
         await self.set_coordinates(self._y, self._x - 1)
@@ -50,5 +48,10 @@ class Cursor(BaseComponent):
 
     async def _handle_arrows(self, msg) -> None:
         if msg in (KEY_LEFT, KEY_DOWN, KEY_UP, KEY_RIGHT):
+            self.l.debug(f'arrow key detected: {msg!r}')
             await self._move[msg]()
-            await self._handle_input(msg)
+        elif msg == E.CURSOR_MOVE:
+            self.l.debug(f'event detected: {msg!r}')
+            self._stdscr.move(shm.registry['y'],
+                              shm.registry['x'])
+            self._stdscr.refresh()

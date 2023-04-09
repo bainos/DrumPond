@@ -34,6 +34,7 @@ class Input(DPClient):
                 break
             else:
                 await self.send(self._k)
+                # self._stdscr.refresh()
                 self.l.debug(
                         f'getch: {chr(self._k)}'
                         f'|{shm.registry}'

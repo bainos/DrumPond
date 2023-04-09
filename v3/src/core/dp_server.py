@@ -1,6 +1,7 @@
 import threading
 import asyncio
 import json
+import re
 
 from logging import makeLogRecord
 import struct
@@ -21,11 +22,10 @@ class BServer():
         self.l = DPUtils().get_logger(name='bserver',
                                       output='socket')
 
-        @staticmethod
-        async def _handle_msg(message: str) -> None:
-            self.l.info(f'< {message}')
+        self._callback: Callable = self._handle_msg
 
-        self._callback: Callable = _handle_msg
+    async def _handle_msg(self, msg: str) -> None:
+        self.l.info(f'< {msg}')
 
     def log_level(self, level: int) -> None:
         self.l.setLevel(level)
@@ -58,6 +58,7 @@ class BServer():
             return
         self._start()
 
+
 class DPServer(BServer):
     def __init__(self, name: str, host: str = '127.0.0.1',
                  port: int = 7581) -> None:
@@ -82,33 +83,37 @@ class DPServer(BServer):
         self.l.debug(f'task_name:{task_name}')
         while True:
             data = await reader.read(128)
-            try:
-                msg = json.loads(data.decode())
-            except Exception as e:
-                self.l.error(json.dumps({
-                    'exception': str(e),
-                    'data': data.decode(),
-                    'client': str(writer.get_extra_info('peername')),
-                    'task': task_name,
-                    }))
-                break
+            messages = re.split(r'(?<=})\B(?={)', data.decode())
+            self.l.debug(f'{task_name}:{messages!r}')
+            for message in messages:
+                try:
+                    msg = json.loads(message)
+                except Exception as e:
+                    self.l.error(json.dumps({
+                        'exception': str(e),
+                        'data': data.decode(),
+                        'client': str(writer.get_extra_info('peername')),
+                        'task': task_name,
+                        }))
+                    break
 
-            if msg['name'] not in self.clients.keys():
-                addr = writer.get_extra_info('peername')
-                self.l.debug(f'{task_name}:registering new client {msg["name"]} {addr}')
-                self.clients[msg["name"]] = writer
-                continue
+                if msg['name'] not in self.clients.keys():
+                    addr = writer.get_extra_info('peername')
+                    self.l.debug(f'{task_name}:registering new client {msg["name"]} {addr}')
+                    self.clients[msg["name"]] = writer
+                    continue
 
-            self.l.debug(f'<({msg["name"]}) {msg["msg"]}')
-            for c in self.clients.keys():
-                self.clients[c].write(data)
-                await self.clients[c].drain()
-                self.l.debug(f'>({c}) {data.decode()}')
+                self.l.debug(f'<({msg["name"]}) {msg["msg"]}')
+                for c in self.clients.keys():
+                    if c != msg['name']:
+                        self.clients[c].write(data)
+                        await self.clients[c].drain()
+                        self.l.debug(f'>({c}) {data.decode()}')
 
-            if msg['msg'] == 'STOP':
-                self.l.critical('LOGGER_QUIT')
-                self.stop_request.set()
-                break
+                if msg['msg'] == 'STOP':
+                    self.l.critical('LOGGER_QUIT')
+                    self.stop_request.set()
+                    break
 
 
 class DPLogger(DPServer):

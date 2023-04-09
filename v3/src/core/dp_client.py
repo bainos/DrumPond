@@ -1,3 +1,4 @@
+#import multiprocessing
 import threading
 import asyncio
 import json
@@ -27,10 +28,10 @@ class DPClient():
         self.l= DPUtils.get_logger(name=name,
                                    output='socket')
 
-        async def _handle_msg(self, message: str) -> None:
-            self.l.info(f'< {message}')
+        self._callback: Callable = self._handle_msg
 
-        self._callback: Callable = _handle_msg
+    async def _handle_msg(self, message: str|int) -> None:
+        self.l.info(f'< {message!r}')
 
     def log_level(self, level: int) -> None:
         self.l.setLevel(level)
@@ -64,21 +65,41 @@ class DPClient():
             await self._listen()
 
         while self.reader is not None:
-            self.l.debug(f'{task_name}:listening')
             if self.reader is None:
                 self.l.error(f'{task_name}:connection lost')
                 raise
-            data = await self.reader.read(128)
-            msg = json.loads(data.decode())
-            if msg['msg'] == 'STOP':
-                self.l.debug(f'{task_name}:STOP received')
+
+            self.l.debug(f'{task_name}:listening')
+            try:
+                data = await self.reader.read(128)
+            except Exception as e:
+                self.l.critical(f'{task_name}:reader is broken:{e}')
                 self.stop_request.set()
                 break
 
-            if msg['name'] != self.name:
-                await self._callback(msg['msg'])
+            self.l.debug(f'{task_name}:decode message')
+            try:
+                msg = json.loads(data.decode())
+            except Exception as e:
+                self.l.critical(f'{task_name}:cannot decode message:{e}:{data.decode()}')
+                self.stop_request.set()
+                break
 
-        self.l.debug(f'{task_name}:stopping')
+            self.l.debug(f'{task_name}:{msg}')
+            if msg['msg'] == 'STOP':
+                self.l.info(f'{task_name}:STOP received')
+                self.stop_request.set()
+                break
+
+            self.l.info(f'{task_name}:handle messag fron {msg["name"]}')
+            try:
+                await self._callback(msg['msg'])
+            except Exception as e:
+                self.l.critical(f'{task_name}:client callback failure: {e!r}')
+                self.stop_request.set()
+                break
+
+        self.l.info(f'{task_name}:stopping')
 
     async def _open_connection(self):
         self.l.debug('opening connection')
