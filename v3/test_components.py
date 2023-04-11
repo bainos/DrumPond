@@ -1,7 +1,7 @@
 import curses
 from logging import ERROR, DEBUG
 from src.core import dp_shm as shm
-from src.constants import modes as m
+from src.constants import modes as M
 from src.components.dispatcher import Dispatcher
 from src.components.input import Input
 from src.components.cursor import Cursor
@@ -17,7 +17,7 @@ def draw(stdscr: curses.window) -> None:
 
     maxy, maxx = stdscr.getmaxyx()
     shm.dset({
-        'mode': m.NORMAL,
+        'k': -1,        'mode': M.NORMAL,
         'winh': maxy,   'winw': maxx,
         'maxy': maxy-2, 'maxx': maxx-2,
         'miny': 3,      'minx': 2,
