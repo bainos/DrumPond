@@ -1,0 +1,18 @@
+[tool.ruff]
+select = ["ALL"]
+ignore = [
+    #"ANN",      # Type hints related, let mypy handle these.
+    #"COM812",   # "Trailing comma missing". If black is happy, I'm happy.
+    #"D",        # Docstrings related
+    #"E501",     # "Line too long". If black is happy, I'm happy.
+    #"EM101",    # "Exception must not use a string literal, assign to variable first"
+    #"EM102",    # "Exception must not use an f-string literal, assign to variable first"
+    #"PTH",      # User Pathlib stuff over os.*. Should migrate to Pathlib at some point.
+    "Q000"	# Single quotes found but double quotes preferred
+    #"RET504",   # "Unnecessary variable assignment before `return` statement"
+    #"S101",     # "Use of `assert` detected"
+    #"SIM108",   # "Use ternary operator ...". Ternary is harmful for readability in some cases.
+    #"TRY003",   # "Avoid specifying long messages outside the exception class"
+    ]
+line-length = 88
+target-version = "py311"
